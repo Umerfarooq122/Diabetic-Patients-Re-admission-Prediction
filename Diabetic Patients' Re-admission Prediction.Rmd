@@ -1,0 +1,69 @@
+---
+title: "Diabetic Patient Re-Admission Prediction"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+
+library(tidyverse)
+library(naniar)
+library(MASS)
+library(mice)
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+df <- read_csv("https://raw.githubusercontent.com/Umerfarooq122/Diabetic-Patients-Re-admission-Prediction/main/diabetic_data.csv")
+```
+
+```{r}
+
+```
+
+
+```{r}
+df[df == '?'] <- NA
+```
+
+
+```{r}
+colSums(is.na(df))
+```
+```{r}
+sum(duplicated(df$encounter_id))
+```
+
+
+```{r}
+df <- df[-c(6,11,12)]
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+colSums(is.na(df))
+```
+
+
+```{r}
+set.seed(2)
+df <- na.omit(df)
+```
+
+```{r}
+df$admission_type_id <- as.factor(df$admission_type_id)
+```
+
+
+```{r}
+str(df)
+```
+
