@@ -11,9 +11,17 @@ output:
 knitr::opts_chunk$set(cache = TRUE)
 
 library(tidyverse)
-library(naniar)
-library(MASS)
+library(glmnet)
 library(mice)
+library(psych)
+library(pROC)
+library(caret)
+library(devtools)
+library(nnet)
+library(MASS)
+library(faraway)
+library(corrplot)
+library(DataExplorer)
 
 ```
 
@@ -41,7 +49,7 @@ sum(duplicated(df$encounter_id))
 
 
 ```{r}
-df <- df[-c(6,11,12)]
+df <- df[-c(1,2,6,11,12)]
 ```
 
 ```{r}
@@ -59,11 +67,114 @@ df <- na.omit(df)
 ```
 
 ```{r}
+df[] <- lapply(df, function(x) if(is.character(x)) factor(x) else x)
+```
+
+```{r}
 df$admission_type_id <- as.factor(df$admission_type_id)
+df$discharge_disposition_id <- as.factor(df$discharge_disposition_id)
+df$admission_source_id <- as.factor(df$admission_source_id)
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+unique(df$admission_source_id)
+```
+
+
+```{r}
+df <- df[-c(35,36,41)]
+```
+
+```{r}
+df <- df[-c(14,15,16)]
 ```
 
 
 ```{r}
 str(df)
+```
+
+
+```{r}
+xtabs(~readmitted+change, data = df)
+```
+
+
+```{r warning=FALSE , message=FALSE}
+out <- split_columns(df)
+plot_histogram(out$continuous)
+plot_bar(out$discrete)
+```
+
+ 
+
+
+```{r}
+set.seed(42)
+split <- createDataPartition(df$readmitted, p=.75, list=FALSE)
+partial_train <- df[split, ]
+validation <- df[ -split, ]
+```
+
+
+
+```{r}
+m1 <- multinom(readmitted~., data = partial_train, maxit = 500)
+```
+```{r}
+summary(m1)
+```
+
+
+
+```{r}
+prediction <- predict(m1, newdata = validation[-c(39)], type = "class" )
+```
+
+```{r}
+colnames(df)
+```
+
+```{r}
+
+m2 <- multinom(readmitted~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = partial_train, maxit = 500)
+
+```
+
+```{r}
+prediction2 <- predict(m2, newdata = validation[-c(39)], type = "class")
+```
+
+```{r}
+mat2 <- confusionMatrix(prediction2, validation$readmitted, 
+                        mode = "everything")
+```
+
+```{r}
+mat2$table
+#mat2$byClass
+```
+```{r}
+#m11 <- glm(formula = readmitted ~ . , data = partial_train, family = "binomial")
+```
+
+
+```{r}
+mat1 <- confusionMatrix(prediction, validation$readmitted, 
+                        mode = "everything")
+```
+
+```{r}
+mat1$table
+```
+
+
+
+```{r}
+summary(model_forward)
 ```
 
