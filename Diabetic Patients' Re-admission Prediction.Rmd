@@ -80,9 +80,7 @@ df$admission_source_id <- as.factor(df$admission_source_id)
 str(df)
 ```
 
-```{r}
-unique(df$admission_source_id)
-```
+
 
 
 ```{r}
@@ -99,9 +97,7 @@ str(df)
 ```
 
 
-```{r}
-xtabs(~readmitted+change, data = df)
-```
+
 
 
 ```{r warning=FALSE , message=FALSE}
@@ -110,7 +106,16 @@ plot_histogram(out$continuous)
 plot_bar(out$discrete)
 ```
 
+
+
  
+```{r}
+dtrain <- downSample(x = df[, -39],
+                     y = df$readmitted)
+```
+
+
+
 
 
 ```{r}
@@ -132,7 +137,7 @@ summary(m1)
 
 
 ```{r}
-prediction <- predict(m1, newdata = validation[-c(39)], type = "class" )
+prediction <- predict(m1, newdata = validation[-c(39)], type = "prob" )
 ```
 
 ```{r}
@@ -146,7 +151,7 @@ m2 <- multinom(readmitted~ race + gender + admission_type_id + num_lab_procedure
 ```
 
 ```{r}
-prediction2 <- predict(m2, newdata = validation[-c(39)], type = "class")
+prediction2 <- predict(m2, newdata = validation[-c(39)], type = "prob")
 ```
 
 ```{r}
@@ -157,7 +162,38 @@ mat2 <- confusionMatrix(prediction2, validation$readmitted,
 ```{r}
 mat2$table
 #mat2$byClass
+
+
 ```
+
+```{r}
+y_test <- validation$readmitted
+```
+
+
+```{r}
+y_test_one_hot <- model.matrix(~ y_test - 1)
+
+# Calculate AUC-ROC for each class
+auc_roc_scores <- numeric()
+for (i in 1:ncol(y_test_one_hot)) {
+  auc_roc <- roc(y_test_one_hot[, i], prediction[, i])
+  auc_roc_scores <- c(auc_roc_scores, auc(auc_roc))
+  cat(sprintf("AUC-ROC for Class %d: %.4f\n", i - 1, auc(auc_roc)))
+}
+
+# Average AUC-ROC
+average_auc_roc <- mean(auc_roc_scores)
+cat(sprintf("Average AUC-ROC: %.4f\n", average_auc_roc))
+```
+
+
+```{r}
+getROC(m1)
+```
+
+
+
 ```{r}
 #m11 <- glm(formula = readmitted ~ . , data = partial_train, family = "binomial")
 ```
@@ -172,9 +208,134 @@ mat1 <- confusionMatrix(prediction, validation$readmitted,
 mat1$table
 ```
 
+```{r}
+mat1$byClass
+```
 
 
 ```{r}
-summary(model_forward)
+set.seed(42)
+split <- createDataPartition(dtrain$Class, p=.75, list=FALSE)
+p_train <- dtrain[split, ]
+valid <- dtrain[ -split, ]
+```
+
+```{r}
+m111 <- multinom(Class~., data = p_train, maxit = 500)
+```
+
+```{r}
+pred_sample <- predict(m111, newdata = validation[-c(39)], type = "class")
+```
+
+```{r}
+mat_sample <- confusionMatrix(pred_sample, validation$readmitted, 
+                        mode = "everything")
+```
+
+```{r}
+mat_sample$table
+```
+
+```{r}
+mat_sample$byClass
+```
+
+```{r}
+m112 <- multinom(Class~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = p_train, maxit = 500)
+```
+```{r}
+pred2_sample <- predict(m112, newdata = valid[-c(39)], type = "class")
+```
+
+```{r}
+mat2_sample <- confusionMatrix(pred2_sample, valid$Class, 
+                        mode = "everything")
+```
+
+```{r}
+mat2_sample$byClass
+```
+```{r}
+dtrain <- downSample(x = df[, -39],
+                     y = df$readmitted)
+```
+
+```{r}
+utrain <- upSample(x = df[, -39],
+                     y = df$readmitted)
+```
+
+
+```{r warning=FALSE , message=FALSE}
+out <- split_columns(dtrain)
+plot_histogram(out$continuous)
+plot_bar(out$discrete)
+```
+
+```{r}
+dtrain%>%
+  group_by(Class)%>%
+  summarise(`metformin-pioglitazone`)
+```
+
+
+
+```{r}
+xtabs(~readmitted+acarbose, data = df )
+```
+
+
+```{r}
+set.seed(42)
+split <- createDataPartition(utrain$Class, p=.75, list=FALSE)
+u_train <- utrain[split, ]
+uvalid <- utrain[ -split, ]
+```
+
+
+
+
+```{r}
+mu1 <- multinom(Class~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = u_train, maxit = 500)
+```
+
+```{r}
+mu1_pred <- predict(mu1, newdata = validation[-c(39)], type = "class")
+```
+
+```{r}
+mu_mat <- confusionMatrix(mu1_pred, validation$readmitted,mode = "everything")
+```
+
+```{r}
+mu_mat$table
+```
+
+
+```{r}
+mu_mat$byClass
+```
+
+```{r}
+partial_train$`glyburide-metformin`
+```
+
+
+```{r}
+library(randomForest)
+set.seed(12345)
+# Training with Random forest model
+modfit.rf <- randomForest(readmitted~race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed , data=partial_train)
+
+# Predict the testing set with the trained model
+predictions2 <- predict(modfit.rf, validation[-c(39)], type = "prob")
+
+# Accuracy and other metrics
+confusionMatrix(predictions2, validation$readmitted)
+```
+
+```{r}
+
 ```
 
