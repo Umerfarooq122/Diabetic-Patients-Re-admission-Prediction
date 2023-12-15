@@ -22,6 +22,8 @@ library(MASS)
 library(faraway)
 library(corrplot)
 library(DataExplorer)
+library(neuralnet)
+library(keras)
 
 ```
 
@@ -115,7 +117,112 @@ dtrain <- downSample(x = df[, -39],
 ```
 
 
+```{r}
+set.seed(42)
+split <- createDataPartition(dtrain$Class, p=.75, list=FALSE)
+p_train <- dtrain[split, ]
+valid <- dtrain[ -split, ]
+```
 
+```{r warning=FALSE , message=FALSE}
+outtr <- split_columns(p_train)
+outte <- split_columns(valid)
+#plot_histogram(out$continuous)
+#plot_bar(out$discrete)
+```
+
+```{r}
+x_train_continuous <- scale(outtr$continuous)
+x_test_continuous <- scale(outte$continuous)
+```
+
+
+```{r}
+x_train_categorical <- model.matrix(~., data = outtr$discrete)[, -1]
+x_test_categorical <- model.matrix(~., data = outte$discrete)[, -1]
+```
+
+
+
+```{r}
+x_train1 <- cbind(x_train_continuous, x_train_categorical)
+x_test1 <- cbind(x_test_continuous, x_test_categorical)
+
+```
+
+```{r}
+x_train <- as.matrix(x_train1[,1:126])
+y_train <- as.matrix(x_train1[,127:128])
+```
+
+```{r}
+x_test <- as.matrix(x_test1[,1:126])
+y_test <- as.matrix(x_test1[,127:128])
+```
+
+
+```{r}
+model <- keras_model_sequential() %>%
+  layer_dense(units = 128, activation = 'relu', input_shape = c(126)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 2, activation = 'softmax')
+
+```
+```{r}
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'categorical_crossentropy',  # Use 'binary_crossentropy' for binary classification
+  metrics = c('accuracy')
+)
+```
+
+
+```{r}
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 10, batch_size = 32,
+  validation_split = 0.2
+)
+```
+
+```{r}
+results <- model %>% evaluate(x_test, y_test)
+print(results)
+```
+```{r}
+predictions <- model %>% predict(x_test)
+```
+
+```{r}
+roc_curve <- roc(y_test, predictions)
+auc_value <- auc(roc_curve)
+```
+```{r}
+plot(roc_curve, main = paste("ROC Curve (AUC =", auc_value, ")"))
+```
+
+
+***
+
+
+```{r}
+lda_model <- lda(Class~ num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses , data = p_train, penalty = .1)
+```
+
+```{r}
+summary(lda_model)
+```
+
+
+***
+
+
+
+
+
+
+
+***
 
 
 ```{r}
@@ -213,12 +320,6 @@ mat1$byClass
 ```
 
 
-```{r}
-set.seed(42)
-split <- createDataPartition(dtrain$Class, p=.75, list=FALSE)
-p_train <- dtrain[split, ]
-valid <- dtrain[ -split, ]
-```
 
 ```{r}
 m111 <- multinom(Class~., data = p_train, maxit = 500)
