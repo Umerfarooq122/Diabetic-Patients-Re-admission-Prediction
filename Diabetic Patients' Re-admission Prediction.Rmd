@@ -24,18 +24,17 @@ library(corrplot)
 library(DataExplorer)
 library(neuralnet)
 library(keras)
+library(e1071)
+library(tensorflow)
+library(class)
 
 ```
 
+## **Loading and Cleaning Data:**
 
 ```{r message=FALSE, warning=FALSE}
 df <- read_csv("https://raw.githubusercontent.com/Umerfarooq122/Diabetic-Patients-Re-admission-Prediction/main/diabetic_data.csv")
 ```
-
-```{r}
-
-```
-
 
 ```{r}
 df[df == '?'] <- NA
@@ -45,6 +44,7 @@ df[df == '?'] <- NA
 ```{r}
 colSums(is.na(df))
 ```
+
 ```{r}
 sum(duplicated(df$encounter_id))
 ```
@@ -108,9 +108,72 @@ plot_histogram(out$continuous)
 plot_bar(out$discrete)
 ```
 
+## **Creating Models:**
 
+### **Multinomial logit model:**
+
+
+```{r}
+set.seed(42)
+split <- createDataPartition(df$readmitted, p=.75, list=FALSE)
+partial_train <- df[split, ]
+validation <- df[ -split, ]
+```
+
+```{r}
+m1 <- multinom(readmitted~., data = partial_train, maxit = 500)
+```
+
+```{r}
+#summary(m1)
+```
+
+```{r}
+pred_class <- predict(m1, newdata = validation[-c(39)], type = "class" )
+```
+
+```{r}
+mat1 <- confusionMatrix(pred_class, validation$readmitted, 
+                        mode = "everything")
+```
+
+```{r}
+mat1$table
+```
+
+```{r}
+mat1$byClass
+```
+
+***
+
+### **Reduced Mulitnomial logit model:**
+
+```{r}
+
+m2 <- multinom(readmitted~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = partial_train, maxit = 500)
+
+```
+
+```{r}
+pred2_class <- predict(m2, newdata = validation[-c(39)], type = "class")
+```
+
+```{r}
+mat2 <- confusionMatrix(pred2_class, validation$readmitted, 
+                        mode = "everything")
+```
+
+```{r}
+mat2$table
+```
 
  
+## **Downsampling models:** 
+ 
+ 
+### **Multinomial Logit:**
+
 ```{r}
 dtrain <- downSample(x = df[, -39],
                      y = df$readmitted)
@@ -123,6 +186,133 @@ split <- createDataPartition(dtrain$Class, p=.75, list=FALSE)
 p_train <- dtrain[split, ]
 valid <- dtrain[ -split, ]
 ```
+
+
+```{r}
+m111 <- multinom(Class~., data = p_train, maxit = 500)
+```
+
+```{r}
+predd_class <- predict(m111, newdata = valid[-c(39)], type = "class")
+```
+
+```{r}
+mat_sample <- confusionMatrix(predd_class, valid$Class, 
+                        mode = "everything")
+```
+
+```{r}
+mat_sample$table
+```
+
+```{r}
+mat_sample$byClass
+```
+### **Reduced multinomial logit:**
+
+```{r warning=FALSE , message=FALSE}
+out <- split_columns(dtrain)
+plot_histogram(out$continuous)
+plot_bar(out$discrete)
+```
+```{r}
+m112 <- multinom(Class~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = p_train, maxit = 500)
+```
+
+
+```{r}
+predd2_class <- predict(m112, newdata = valid[-c(39)], type = "class")
+```
+
+```{r}
+mat2_sample <- confusionMatrix(predd2_class, valid$Class, 
+                        mode = "everything")
+```
+
+```{r}
+mat2_sample$byClass
+```
+
+```{r}
+model <- multinom(Class ~ 1, data = p_train)
+```
+```{r}
+fit_multinom <- function(variables) {
+  formula <- as.formula(paste("Class ~", paste(variables, collapse = " + ")))
+  model <- tryCatch(multinom(formula, data = p_train), error = function(e) NULL)
+  if (!is.null(model)) {
+    return(AIC(model))
+  } else {
+    return(Inf)  # Return a high AIC if the model cannot be fitted
+  }
+}
+```
+
+```{r}
+predictor_variables <- names(p_train[!names(p_train) %in% c("Class")])
+```
+
+
+```{r}
+#selected_predictors <- character(0)
+#while (length(selected_predictors) < 38) {
+#  candidate_predictors <- setdiff(predictor_variables, selected_predictors)
+#  aic_values <- sapply(candidate_predictors, function(pred) fit_multinom(c(selected_predictors, pred)))
+#  best_predictor <- candidate_predictors[which.min(aic_values)]
+#  selected_predictors <- c(selected_predictors, best_predictor)
+#}
+```
+
+
+```{r}
+#print(selected_predictors)
+```
+
+```{r}
+#final_model <- multinom(Class ~ ., data = p_train[, c("Class", selected_predictors)], maxit = 500)
+```
+
+
+```{r}
+#best_pred <- predict(final_model, newdata = valid[-c(39)], type = "class")
+```
+
+```{r}
+#best_mat <- confusionMatrix(best_pred, valid$Class, mode = "everything")
+```
+
+```{r}
+#best_mat$byClass
+```
+
+
+### **Multinomial logit With CV:**
+
+```{r}
+ctrl <- trainControl(method = 'cv', number = 2)
+mcv <- caret::train(Class~ ., data = p_train, method = "multinom", trControl = ctrl)
+```
+
+```{r}
+predcv_class <- predict(mcv, newdata = valid[-c(39)], type = "raw")
+```
+
+
+
+```{r}
+matcv_sample <- confusionMatrix(predcv_class, valid$Class, 
+                        mode = "everything")
+```
+
+```{r}
+matcv_sample$table
+```
+```{r}
+matcv_sample$byClass
+```
+
+
+## **Coding the data**
 
 ```{r warning=FALSE , message=FALSE}
 outtr <- split_columns(p_train)
@@ -160,14 +350,225 @@ x_test <- as.matrix(x_test1[,1:126])
 y_test <- as.matrix(x_test1[,127:128])
 ```
 
+```{r}
+mat_df <- cbind.data.frame(x_train, class = p_train$Class)
+```
+
+```{r}
+mat_m1 <- multinom(class~., data = mat_df, maxit=1000)
+```
+
+
+```{r}
+mat_pred1 <- predict(mat_m1, newdata = x_test, type = 'class')
+```
+
+```{r}
+mat_mat <- confusionMatrix(mat_pred1, valid$Class, mode = "everything")
+```
+
+```{r}
+mat_mat$table
+```
+```{r}
+mat_mat$byClass
+```
+
+
+```{r}
+unique(p_train$Class)
+
+```
+
+```{r}
+ggplot(data = p_train) + geom_dotplot(mapping = aes(x = number_inpatient, fill = Class))
+```
+
+## **Random Forest:**
+
+```{r}
+library(randomForest)
+set.seed(12)
+# Training with Random forest model
+modfit.rf <- randomForest(Class~race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, ntree = 700, data = p_train)
+
+# Predict the testing set with the trained model
+predictions2 <- predict(modfit.rf, valid[-c(39)], type = "class")
+```
+
+
+
+```{r}
+# Accuracy and other metrics
+rand_mat <- confusionMatrix(predictions2, valid$Class)
+```
+
+```{r}
+rand_mat$byClass
+```
+
+
+## **Support Vector Machine:**
+
+```{r}
+svm_df <- cbind.data.frame(x_train_categorical, outtr$continuous, class = p_train$Class)
+```
+
+
+```{r}
+svm_model <- svm(class~., data = mat_df, type = "C-classification")
+
+#best_svm_model <- svm_model$best.model
+
+```
+
+
+```{r}
+svm_pred <- predict(svm_model, newdata = x_test, type = "class")
+```
+
+```{r}
+svm_conmat <- confusionMatrix(svm_pred, valid$Class, mode = "everything")
+```
+
+```{r}
+svm_conmat$byClass
+```
+
+## **KNN:**
+
+```{r}
+set.seed(32)
+# Number of neighbors
+k <- 120
+
+# Perform kNN classification
+predicted_classes <- knn(train = x_train, 
+                         test = x_test, 
+                         cl = mat_df$class, 
+                         k = k)
+
+```
+
+```{r}
+knn_mat <- confusionMatrix(data = factor(predicted_classes), valid$Class)
+```
+
+```{r}
+knn_mat$byClass
+```
+
+## **Simple Neural Network:**
+
+```{r}
+set.seed(42)
+split <- createDataPartition(dtrain$Class, p=.75, list=FALSE)
+d_train <- dtrain[split, ]
+valid <- dtrain[ -split, ]
+```
+
+
+```{r}
+p_train <- dummyVars(" ~ .", data = p_train[-c(39)]) %>% 
+  predict(p_train)
+```
+
+```{r}
+p_train <- cbind.data.frame(p_train, class = d_train$Class)
+```
+
+```{r}
+p_train$class <- as.factor(p_train$class)
+```
+
+```{r}
+
+```
+
+```{r}
+d_train <- as.matrix(d_train)
+```
+
+
+```{r}
+formula <- as.formula("class ~ .")
+```
+
+```{r}
+print(formula)
+```
+
+
+```{r}
+colnames(x_test) <- paste0('X',1:ncol(x_test))
+```
+
+```{r}
+colnames(mat_df) <- paste0('X',1:ncol(mat_df))
+```
+
+```{r}
+FORMULA <- X127~X1+X2+X3+X4+X5+X6+X7+X8+X9+X10+X11+X12+X13+X14+X15+X16+X17
+
+```
+
+
+
+```{r}
+nn_model <- neuralnet(
+  FORMULA,
+  data = mat_df,
+  hidden = c(32,16,3),
+  
+  err.fct = "ce",  # Cross-entropy loss for multiclass classification
+  act.fct = "logistic"
+)
+```
+
+
+
+
+
+
+```{r}
+plot(nn_model)
+```
+
+```{r}
+pred_nn <- predict(nn_model, newdata = x_test)
+```
+
+```{r}
+class_nn <- max.col(pred_nn, ties.method = "first")
+class_label <- c("<30",">30","NO")
+classpred_nn <- class_label[class_nn]
+```
+
+```{r}
+print(classpred_nn)
+```
+
+
+```{r}
+conmat_nn <- confusionMatrix(data = factor(classpred_nn), valid$Class)
+```
+
+```{r}
+conmat_nn$byClass
+```
+
+
+## **Neural Network:**
 
 ```{r}
 model <- keras_model_sequential() %>%
   layer_dense(units = 128, activation = 'relu', input_shape = c(126)) %>%
   layer_dropout(rate = 0.3) %>%
-  layer_dense(units = 2, activation = 'softmax')
+  layer_dense(units = 3, activation = 'softmax')
 
 ```
+
+
 ```{r}
 model %>% compile(
   optimizer = 'adam',
@@ -189,82 +590,67 @@ history <- model %>% fit(
 results <- model %>% evaluate(x_test, y_test)
 print(results)
 ```
+
 ```{r}
 predictions <- model %>% predict(x_test)
 ```
 
+
+## **ROC:**
+
+### basic multinomial
 ```{r}
-roc_curve <- roc(y_test, predictions)
-auc_value <- auc(roc_curve)
+pred_probs <- predict(m1, newdata = validation[-c(39)], type = "probs" )
+```
+
+
+
+```{r}
+roc_curve1 <- multiclass.roc(validation$readmitted, as.matrix(pred_probs))
+```
+
+
+```{r}
+print(roc_curve1)
 ```
 ```{r}
-plot(roc_curve, main = paste("ROC Curve (AUC =", auc_value, ")"))
+mat_probs <- predict(mat_m1, newdata = x_test, type = 'probs')
 ```
+
+### downsampled multinomial
+```{r}
+roc_curve2 <- multiclass.roc(valid$Class, as.matrix(mat_probs))
+```
+
+
+```{r}
+print(roc_curve2)
+```
+### KNN:
+
+
+```{r}
+knn_prob <- knn.cv( mat_df[, -ncol(mat_df)],
+                         mat_df$class, prob = TRUE 
+                         )
+```
+
+```{r}
+print(knn_prob)
+```
+
+```{r}
+knn_probs <- as.matrix(knn_prob)
+```
+
+
+```{r}
+roc_curveknn <- multiclass.roc(valid$Class, knn_probs)
+```
+
 
 
 ***
-
-
-```{r}
-lda_model <- lda(Class~ num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses , data = p_train, penalty = .1)
-```
-
-```{r}
-summary(lda_model)
-```
-
-
-***
-
-
-
-
-
-
-
-***
-
-
-```{r}
-set.seed(42)
-split <- createDataPartition(df$readmitted, p=.75, list=FALSE)
-partial_train <- df[split, ]
-validation <- df[ -split, ]
-```
-
-
-
-```{r}
-m1 <- multinom(readmitted~., data = partial_train, maxit = 500)
-```
-```{r}
-summary(m1)
-```
-
-
-
-```{r}
-prediction <- predict(m1, newdata = validation[-c(39)], type = "prob" )
-```
-
-```{r}
-colnames(df)
-```
-
-```{r}
-
-m2 <- multinom(readmitted~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = partial_train, maxit = 500)
-
-```
-
-```{r}
-prediction2 <- predict(m2, newdata = validation[-c(39)], type = "prob")
-```
-
-```{r}
-mat2 <- confusionMatrix(prediction2, validation$readmitted, 
-                        mode = "everything")
-```
 
 ```{r}
 mat2$table
@@ -300,143 +686,129 @@ getROC(m1)
 ```
 
 
+## **Classification Metrics:**
 
 ```{r}
-#m11 <- glm(formula = readmitted ~ . , data = partial_train, family = "binomial")
-```
-
-
-```{r}
-mat1 <- confusionMatrix(prediction, validation$readmitted, 
-                        mode = "everything")
-```
-
-```{r}
-mat1$table
-```
-
-```{r}
-mat1$byClass
-```
-
-
-
-```{r}
-m111 <- multinom(Class~., data = p_train, maxit = 500)
-```
-
-```{r}
-pred_sample <- predict(m111, newdata = validation[-c(39)], type = "class")
-```
-
-```{r}
-mat_sample <- confusionMatrix(pred_sample, validation$readmitted, 
-                        mode = "everything")
-```
-
-```{r}
-mat_sample$table
-```
-
-```{r}
-mat_sample$byClass
-```
-
-```{r}
-m112 <- multinom(Class~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = p_train, maxit = 500)
-```
-```{r}
-pred2_sample <- predict(m112, newdata = valid[-c(39)], type = "class")
-```
-
-```{r}
-mat2_sample <- confusionMatrix(pred2_sample, valid$Class, 
-                        mode = "everything")
-```
-
-```{r}
-mat2_sample$byClass
-```
-```{r}
-dtrain <- downSample(x = df[, -39],
-                     y = df$readmitted)
-```
-
-```{r}
-utrain <- upSample(x = df[, -39],
-                     y = df$readmitted)
-```
-
-
-```{r warning=FALSE , message=FALSE}
-out <- split_columns(dtrain)
-plot_histogram(out$continuous)
-plot_bar(out$discrete)
-```
-
-```{r}
-dtrain%>%
-  group_by(Class)%>%
-  summarise(`metformin-pioglitazone`)
-```
-
-
-
-```{r}
-xtabs(~readmitted+acarbose, data = df )
+final_table <- data.frame(mat1$byClass)
 ```
 
 
 ```{r}
-set.seed(42)
-split <- createDataPartition(utrain$Class, p=.75, list=FALSE)
-u_train <- utrain[split, ]
-uvalid <- utrain[ -split, ]
-```
+eval1 <- data.frame(mat1$byClass)
+row.names(eval1) <- c("Multinomial (<30)", "Multinomial (>30)", "Multinomial (NO)")
 
+eval2 <- data.frame(mat2$byClass)
+row.names(eval2) <- c("Reduced Multinomial (<30)", "Reduced Multinomial (>30)", "Reduced Multinomial (NO)")
 
+eval3 <- data.frame(mat_sample$byClass)
+row.names(eval3) <- c("Down Sampled Multinomial (<30)", "Down Sampled Multinomial (>30)", "Down Sampled Multinomial (NO)")
 
+eval4 <- data.frame(mat2_sample$byClass)
+row.names(eval4) <- c("Down Sampled Reduced Multinomial (<30)", "Down Sampled Reduced Multinomial (>30)", "Down Sampled Reduced Multinomial (NO)")
 
-```{r}
-mu1 <- multinom(Class~ race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed, data = u_train, maxit = 500)
-```
+eval5 <- data.frame(matcv_sample$byClass)
+row.names(eval5) <- c("Multinomial Cross Validated (<30)", "Multinomial Cross Validated (>30)", "Multinomial Cross Validated (NO)")
 
-```{r}
-mu1_pred <- predict(mu1, newdata = validation[-c(39)], type = "class")
-```
+eval6 <- data.frame(mat_mat$byClass)
+row.names(eval6) <- c("Multinomial with Coded Matrix (<30)", "Multinomial with Coded Matrix (>30)", "Multinomial with Coded Matrix (NO)")
 
-```{r}
-mu_mat <- confusionMatrix(mu1_pred, validation$readmitted,mode = "everything")
-```
+eval7 <- data.frame(rand_mat$byClass)
+row.names(eval7) <- c("Random Forest (<30)", "Random Forest (>30)", "Random Forest (NO)")
 
-```{r}
-mu_mat$table
-```
+eval8 <- data.frame(knn_mat$byClass)
+row.names(eval8) <- c("KNN (<30)", "KNN (>30)", "KNN (NO)")
 
-
-```{r}
-mu_mat$byClass
-```
-
-```{r}
-partial_train$`glyburide-metformin`
+eval9 <- data.frame(svm_conmat$byClass)
+row.names(eval9) <- c("Support Vector Machines (<30)", "Support Vector Machines (>30)", "Support Vector Machines (NO)")
 ```
 
 
 ```{r}
-library(randomForest)
-set.seed(12345)
-# Training with Random forest model
-modfit.rf <- randomForest(readmitted~race + gender + admission_type_id + num_lab_procedures+ num_medications + num_procedures + time_in_hospital + number_inpatient + number_outpatient + number_diagnoses + A1Cresult + metformin + glimepiride + glipizide + glyburide + pioglitazone + rosiglitazone + insulin + change + diabetesMed , data=partial_train)
-
-# Predict the testing set with the trained model
-predictions2 <- predict(modfit.rf, validation[-c(39)], type = "prob")
-
-# Accuracy and other metrics
-confusionMatrix(predictions2, validation$readmitted)
+final_eval <- rbind.data.frame(eval1,eval2, eval3, eval4, eval5,eval6,eval7,eval8, eval9)
 ```
 
 ```{r}
+file <- "/Users/umerfarooq/Desktop/Data 621/Final Project.xlsx"
+write.xlsx(final_eval, file = file, sheetName = "eval", rowNames = TRUE)
+```
+
+
+```{r}
+long_data <- data.frame(
+  ID = c(1, 1, 2, 2),
+  Metric = c("Sensitivity", "Specificity", "Sensitivity", "Specificity"),
+  Value = c(0.8, 0.9, 0.7, 0.85)
+)
+```
+
+
+```{r}
+eval_wide <- pivot_wider(data = eval, names_from = )
+```
+
+
+```{r}
+library(dplyr)
+library(knitr)
+
+# Assuming mat1, mat2, and mat_sample are matrices or data frames with a 'byClass' column
+# Replace the following placeholders with your actual data
+mat1 <- data.frame(byClass = c(0.8, 0.7, 0.9))  # Replace with actual data
+mat2 <- data.frame(byClass = c(0.85, 0.75, 0.92))  # Replace with actual data
+mat_sample <- data.frame(byClass = c(0.78, 0.68, 0.91))  # Replace with actual data
+
+# Create the eval data frame
+eval <- data.frame(mat1$byClass, mat2$byClass, mat_sample$byClass)
+eval <- data.frame(t(eval))
+colnames(eval) <- c("Multinomial Logit", "Multinomial Logit Reduced", "Down Sampled Multinomial Logit")
+
+# Select the relevant columns using dplyr::select
+eval <- dplyr::select(
+  eval,
+  Sensitivity,
+  Specificity,
+  `Pos Pred Value`,
+  `Neg Pred Value`,
+  Precision,
+  Recall,
+  F1,
+  Prevalence,
+  `Detection Rate`,
+  `Detection Prevalence`,
+  `Balanced Accuracy`
+)
+
+# Add row names
+row.names(eval) <- c("Multinomial Logit", "Multinomial Logit Reduced", "Down Sampled Multinomial Logit")
+
+# Display the eval data frame using knitr::kable
+knitr::kable(eval)
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
